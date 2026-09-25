@@ -1,0 +1,53 @@
+====================================================================
+           ROTEIRO DE DEMONSTRAÇÃO PRÁTICA - BACKEND CUIDA
+           FLUXO DE NOTIFICAÇÃO VIA WHATSAPP (MODO MOCK)
+====================================================================
+
+OBJETIVO DA APRESENTAÇÃO:
+Demonstrar a integração do backend com o banco de dados (Supabase),
+o processamento em lote da fila assíncrona e a formatação das mensagens 
+de notificação de estoque aos cidadãos favoritados.
+
+--------------------------------------------------------------------
+PASSO 1: INICIAR O SERVIDOR
+--------------------------------------------------------------------
+No terminal 1 (pasta Back-End):
+
+cd C:\Users\sophia.sigolini\Music\cuida\cuida_web_back_end\Back-End
+npm run dev
+
+-> O que explicar: "O backend sobe na porta 3000 conectando ao Supabase.
+   A variável WHATSAPP_MOCK=true permite simular os disparos da Evolution 
+   API em ambiente de homologação com fidelidade técnica."
+
+--------------------------------------------------------------------
+PASSO 2: CONSULTAR O STATUS DO SERVIÇO DE NOTIFICAÇÃO
+--------------------------------------------------------------------
+No terminal 2 (PowerShell):
+
+Invoke-RestMethod -Uri "http://localhost:3000/api/whatsapp/status" -Method GET
+
+-> O que mostrar:
+   Resposta 200 OK informando:
+   - estado: "open"
+   - modo_simulacao: true
+
+--------------------------------------------------------------------
+PASSO 3: DISPARAR NOTIFICAÇÃO DE DISPONIBILIDADE (FLUXO PRINCIPAL)
+--------------------------------------------------------------------
+No terminal 2 (PowerShell):
+
+Invoke-RestMethod -Uri "http://localhost:3000/api/whatsapp/notificar-disponibilidade" -Method POST -Headers @{"Content-Type"="application/json"} -Body '{"id_medicamento": 2, "id_unidade": 4, "aguardar": true}'
+
+-> O que explicar:
+   1. O backend recebe o ID do medicamento e da UBS onde chegou novo lote.
+   2. O Model 'Favorito' consulta no Supabase todos os cidadãos interessados.
+   3. O sistema cria um lote ('lote.id') e processa cada envio individualmente.
+
+-> O que mostrar no Terminal 1 (Terminal do Node):
+   Aponte para o log formatado exibindo:
+   - Destinatário mascarado
+   - Tempo de delay simulando digitação humana
+   - Mensagem personalizada com nome do cidadão, medicamento e unidade
+   - ID único da transação gerada
+====================================================================
