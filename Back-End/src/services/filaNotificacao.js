@@ -259,7 +259,7 @@ async function processarLote(lote) {
     // ---- E-mail (independente do WhatsApp) ----
     if (cli.email) {
       try {
-        await enviarEmail({
+        const r = await enviarEmail({
           para: cli.email,
           assunto: `[CUIDA] Medicamento disponível: ${medicamento}`,
           html:
@@ -268,7 +268,8 @@ async function processarLote(lote) {
             `<p>Compareça com documento com foto e receita médica.</p>` +
             `<p>Equipe CUIDA</p>`
         });
-        item.email = { status: 'enviado' };
+        // enviarEmail devolve undefined quando EMAIL_USER/EMAIL_PASS não estão configurados
+        item.email = r ? { status: 'enviado' } : { status: 'ignorado', codigo: 'EMAIL_NAO_CONFIGURADO' };
       } catch (err) {
         item.email = { status: 'falhou', erro: err.message };
         log.error('notificacao.email_falhou', { lote: lote.id, id_cliente: item.id_cliente, erro: err.message });

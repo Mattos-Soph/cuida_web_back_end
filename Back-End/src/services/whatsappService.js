@@ -169,7 +169,7 @@ async function enviarTexto(numero, texto, { delayDigitacao = 1200 } = {}) {
     const idSimulado = `MOCK_WA_${Date.now()}_${Math.random().toString(36).substring(7).toUpperCase()}`;
     
     console.log('\n---------------- [MOCK DISPARO WHATSAPP] ----------------');
-    console.log(`📱 Destino: ${mascararTelefone(numero)} (${numero})`);
+    console.log(`📱 Destino: ${mascararTelefone(numero)}`);
     console.log(`⏱️ Delay de digitação emulado: ${delayDigitacao}ms`);
     console.log(`💬 Texto:\n${texto}`);
     console.log(`🆔 ID Mensagem: ${idSimulado}`);

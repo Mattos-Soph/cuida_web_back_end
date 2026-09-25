@@ -26,7 +26,7 @@ exports.enviarMensagem = async (req, res) => {
   // Interceptação rápida se estiver rodando em Mock
   if (IS_WHATSAPP_MOCK) {
     console.log('\n================ [MOCK WHATSAPP - AVULSO] ================');
-    console.log(`📱 Destinatário: ${tel.numero}`);
+    console.log(`📱 Destinatário: ${mascararTelefone(tel.numero)}`);
     console.log(`💬 Mensagem: ${mensagem}`);
     console.log('⏱️ Status: Simulado com sucesso (200 OK)');
     console.log('==========================================================\n');
