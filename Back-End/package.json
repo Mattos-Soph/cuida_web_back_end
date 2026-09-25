@@ -5,7 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "test": "node --test",
+    "testar:whatsapp": "node scripts/testar-whatsapp.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.76.1",

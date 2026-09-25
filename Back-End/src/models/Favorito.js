@@ -46,7 +46,7 @@ class Favorito {
         id_cliente,
         id_unidade,
         id_medicamento,
-        cliente:id_cliente (nome, telefone, email),
+        cliente:id_cliente (nome_completo, telefone, email),
         medicamento:id_medicamento (nome, principio_ativo),
         unidade:id_unidade (nome_unidade, endereco)
       `)

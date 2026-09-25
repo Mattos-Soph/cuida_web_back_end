@@ -1,185 +1,167 @@
-const axios = require('axios');
 const Favorito = require('../models/Favorito');
-const { enviarEmail } = require('../services/emailService');
+const wa = require('../services/whatsappService');
+const fila = require('../services/filaNotificacao');
+const { normalizarTelefoneBR, mascararTelefone } = require('../utils/telefone');
+const log = require('../utils/logger');
 
-// Configurações via variáveis de ambiente com fallbacks para testes
-const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL || 'http://localhost:8080';
-const WHATSAPP_API_KEY = process.env.WHATSAPP_API_KEY || '';
-const WHATSAPP_INSTANCE = process.env.WHATSAPP_INSTANCE || 'cuida';
-
-/**
- * Função interna reutilizável: dispara um texto para um número via API do WhatsApp.
- * Retorna os dados da API ou lança erro.
- */
-async function dispararTexto(numero, mensagem) {
-  const numeroLimpo = String(numero).replace(/\D/g, '');
-
-  const response = await axios.post(
-    `${WHATSAPP_API_URL}/message/sendText/${WHATSAPP_INSTANCE}`,
-    {
-      number: numeroLimpo,
-      options: {
-        delay: 1200,
-        presence: 'composing'
-      },
-      textMessage: {
-        text: mensagem
-      }
-    },
-    {
-      headers: {
-        'apikey': WHATSAPP_API_KEY,
-        'Content-Type': 'application/json'
-      }
-    }
-  );
-
-  return response.data;
-}
+const IS_WHATSAPP_MOCK = process.env.WHATSAPP_MOCK === 'true';
 
 /**
- * Pega o primeiro campo preenchido dentre vários nomes possíveis de coluna.
- * Evita quebrar caso a tabela use 'celular' em vez de 'telefone', etc.
- */
-function primeiroCampo(obj, nomes) {
-  if (!obj) return null;
-  for (const nome of nomes) {
-    if (obj[nome]) return obj[nome];
-  }
-  return null;
-}
-
-/**
- * Envia uma mensagem de texto simples
+ * Envia uma mensagem de texto avulsa (uso interno / teste).
  * POST /api/whatsapp/enviar
- * Body: { "numero": "5514999999999", "mensagem": "Olá..." }
+ * Body: { "numero": "(14) 99999-9999", "mensagem": "Olá..." }
  */
 exports.enviarMensagem = async (req, res) => {
-  const { numero, mensagem } = req.body;
+  const { numero, mensagem } = req.body || {};
 
   if (!numero || !mensagem) {
-    return res.status(400).json({
-      error: 'Número e mensagem são obrigatórios.'
+    return res.status(400).json({ success: false, codigo: 'PARAMETROS', error: 'Número e mensagem são obrigatórios.' });
+  }
+
+  const tel = normalizarTelefoneBR(numero);
+  if (!tel.valido) {
+    return res.status(400).json({ success: false, codigo: tel.motivo, error: 'Telefone inválido.' });
+  }
+
+  // Interceptação rápida se estiver rodando em Mock
+  if (IS_WHATSAPP_MOCK) {
+    console.log('\n================ [MOCK WHATSAPP - AVULSO] ================');
+    console.log(`📱 Destinatário: ${tel.numero}`);
+    console.log(`💬 Mensagem: ${mensagem}`);
+    console.log('⏱️ Status: Simulado com sucesso (200 OK)');
+    console.log('==========================================================\n');
+    return res.status(200).json({
+      success: true,
+      id_mensagem: `mock_${Date.now()}`,
+      numero_usado: mascararTelefone(tel.numero),
+      modo_simulacao: true
     });
   }
 
   try {
-    const data = await dispararTexto(numero, mensagem);
+    let destino = tel.numero;
+    const v = await wa.verificarNumero(tel.variantes);
+    if (v.existe === false) {
+      return res.status(422).json({ success: false, codigo: 'SEM_WHATSAPP', numero: mascararTelefone(tel.numero) });
+    }
+    if (v.existe) destino = v.numero;
 
+    const { idMensagem } = await wa.enviarTexto(destino, mensagem);
     return res.status(200).json({
       success: true,
-      data
+      id_mensagem: idMensagem,
+      numero_usado: mascararTelefone(destino),
+      ajuste_9_digito: destino !== tel.numero
     });
-  } catch (error) {
-    console.error('Erro ao disparar WhatsApp:', error.response?.data || error.message);
-    return res.status(500).json({
-      error: 'Falha ao enviar mensagem via WhatsApp.',
-      detalhes: error.response?.data || error.message
-    });
+  } catch (err) {
+    const info = err.classificacao || wa.classificarErro(err);
+    log.error('whatsapp.envio_avulso_falhou', { codigo: info.codigo, status: info.status });
+    const http = info.codigo === 'SEM_WHATSAPP' ? 422 : info.fatalParaLote ? 503 : 502;
+    return res.status(http).json({ success: false, codigo: info.codigo, detalhes: info.detalhe });
   }
 };
 
 /**
- * Notifica todos os cidadãos que favoritaram um medicamento em uma unidade,
- * avisando que o estoque foi reposto. Dispara WhatsApp e e-mail.
- *
+ * Enfileira o aviso para todos que favoritaram o medicamento na unidade.
  * POST /api/whatsapp/notificar-disponibilidade
- * Body: { "id_medicamento": 12, "id_unidade": 3 }
+ * Body: { "id_medicamento": 12, "id_unidade": 3, "aguardar": false }
  */
 exports.notificarDisponibilidade = async (req, res) => {
-  const { id_medicamento, id_unidade } = req.body;
+  const { id_medicamento, id_unidade, aguardar } = req.body || {};
 
   if (!id_medicamento || !id_unidade) {
-    return res.status(400).json({
-      error: 'id_medicamento e id_unidade são obrigatórios.'
-    });
+    return res.status(400).json({ success: false, error: 'id_medicamento e id_unidade são obrigatórios.' });
   }
 
   try {
     const inscritos = await Favorito.buscarInteressados(id_medicamento, id_unidade);
 
-    if (!inscritos.length) {
+    if (!inscritos || !inscritos.length) {
       return res.status(200).json({
         success: true,
-        total_notificados: 0,
+        total_inscritos: 0,
         message: 'Nenhum cidadão cadastrado para este medicamento nesta unidade.'
       });
     }
 
-    const resultados = await Promise.all(
-      inscritos.map(async (item) => {
-        const cliente = item.cliente || {};
-        const nome = primeiroCampo(cliente, ['nome', 'nome_cliente']) || 'cidadão';
-        const telefone = primeiroCampo(cliente, ['telefone', 'celular', 'whatsapp']);
-        const email = primeiroCampo(cliente, ['email', 'e_mail']);
+    const lote = fila.enfileirarDisponibilidade(inscritos, { id_medicamento, id_unidade });
 
-        const medicamento = item.medicamento?.nome || 'seu medicamento';
-        const unidade = item.unidade?.nome_unidade || 'sua unidade de saúde';
+    if (aguardar === true) {
+      const final = await fila.aguardarLote(lote.id);
+      return res.status(200).json({ 
+        success: true, 
+        modo_simulacao: IS_WHATSAPP_MOCK,
+        lote: final 
+      });
+    }
 
-        const texto =
-          `Olá, ${nome}! O medicamento *${medicamento}* já está disponível ` +
-          `para retirada na UBS *${unidade}*. ` +
-          `Compareça com seu documento e receita médica.`;
-
-        const status = {
-          id_favorito: item.id_favorito,
-          id_cliente: item.id_cliente,
-          nome,
-          whatsapp: 'nao_enviado',
-          email: 'nao_enviado'
-        };
-
-        // 1. Disparo WhatsApp
-        if (telefone) {
-          try {
-            await dispararTexto(telefone, texto);
-            status.whatsapp = 'enviado';
-          } catch (err) {
-            status.whatsapp = 'erro';
-            status.erro_whatsapp = err.response?.data || err.message;
-            console.error(`Erro WhatsApp para ${nome}:`, status.erro_whatsapp);
-          }
-        }
-
-        // 2. Disparo E-mail
-        if (email) {
-          try {
-            await enviarEmail({
-              para: email,
-              assunto: `[CUIDA] Medicamento disponível: ${medicamento}`,
-              html:
-                `<p>Olá <strong>${nome}</strong>,</p>` +
-                `<p>O medicamento <strong>${medicamento}</strong> já está disponível na unidade <strong>${unidade}</strong>.</p>` +
-                `<p>Compareça com seu documento e receita médica.</p>` +
-                `<p>Equipe CUIDA</p>`
-            });
-            status.email = 'enviado';
-          } catch (err) {
-            status.email = 'erro';
-            status.erro_email = err.message;
-            console.error(`Erro e-mail para ${nome}:`, err.message);
-          }
-        }
-
-        return status;
-      })
-    );
-
-    const totalWhatsapp = resultados.filter((r) => r.whatsapp === 'enviado').length;
-    const totalEmail = resultados.filter((r) => r.email === 'enviado').length;
-
-    return res.status(200).json({
+    return res.status(202).json({
       success: true,
+      id_lote: lote.id,
       total_inscritos: inscritos.length,
-      total_whatsapp_enviados: totalWhatsapp,
-      total_emails_enviados: totalEmail,
-      detalhes: resultados
+      status: lote.status,
+      modo_simulacao: IS_WHATSAPP_MOCK,
+      acompanhar_em: `/api/whatsapp/notificacoes/${lote.id}`
     });
   } catch (error) {
-    console.error('Erro no broadcast de notificação:', error);
-    return res.status(500).json({
-      error: 'Falha ao processar notificações.',
-      detalhes: error.message
+    log.error('notificacao.falha_ao_enfileirar', { erro: error.message });
+    return res.status(500).json({ success: false, error: 'Falha ao processar notificações.', detalhes: error.message });
+  }
+};
+
+/** GET /api/whatsapp/notificacoes/:id — status detalhado de um lote */
+exports.statusLote = (req, res) => {
+  const lote = fila.obterLote(req.params.id);
+  if (!lote) return res.status(404).json({ success: false, error: 'Lote não encontrado (ou expirado após restart).' });
+  return res.json({ success: true, lote });
+};
+
+/** GET /api/whatsapp/notificacoes — últimos lotes (resumo) */
+exports.listarLotes = (req, res) => res.json({ success: true, lotes: fila.listarLotes() });
+
+/** GET /api/whatsapp/status — a instância da Evolution está conectada? */
+exports.statusInstancia = async (req, res) => {
+  if (IS_WHATSAPP_MOCK) {
+    return res.status(200).json({
+      success: true,
+      instancia: 'cuida-mock',
+      versao_api: 'v1-mock',
+      url: 'http://localhost:simulado',
+      estado: 'open',
+      modo_simulacao: true
     });
+  }
+
+  const s = await wa.estadoConexao();
+  const { instancia, versao, url } = wa.cfg();
+  return res.status(s.conectado ? 200 : 503).json({
+    success: s.conectado,
+    instancia,
+    versao_api: versao,
+    url,
+    estado: s.estado,
+    erro: s.erro?.codigo
+  });
+};
+
+/** POST /api/whatsapp/validar-numero — testa a higienização sem enviar nada */
+exports.validarNumero = async (req, res) => {
+  const { numero, verificar } = req.body || {};
+  const tel = normalizarTelefoneBR(numero);
+  
+  if (!tel.valido || verificar === false || IS_WHATSAPP_MOCK) {
+    return res.json({ 
+      entrada: numero, 
+      ...tel, 
+      ...(IS_WHATSAPP_MOCK ? { whatsapp: { existe: true, numero: tel.numero, simulado: true } } : {}) 
+    });
+  }
+
+  try {
+    const v = await wa.verificarNumero(tel.variantes);
+    return res.json({ entrada: numero, ...tel, whatsapp: v });
+  } catch (err) {
+    const info = err.classificacao || wa.classificarErro(err);
+    return res.status(503).json({ entrada: numero, ...tel, whatsapp: { erro: info.codigo } });
   }
 };
