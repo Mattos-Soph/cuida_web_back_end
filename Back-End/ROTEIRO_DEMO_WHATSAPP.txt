@@ -19,7 +19,12 @@ PASSO 0: CHECAGEM ANTES DA APRESENTAÇÃO (não mostrar)
     id_medicamento = 2 e id_unidade = 4, com telefones em formatos
     diferentes (ex.: "(14) 99876-5432" e "14 9876-5432").
     Use cidadãos fictícios: o terminal mostra nome e medicamento.
-[ ] Rodar o PASSO 3 uma vez e conferir que NÃO volta
+[ ] Para o PASSO 5: escolher um medicamento SEM estoque em uma UBS
+    (ex.: id_medicamento = 3, id_unidade = 4) e favoritá-lo com um
+    cidadão de teste. Cada entrada de estoque grava de verdade no
+    banco: para repetir a demo, zere a quantidade desse lote no
+    Supabase (tabela estoque) ou use outro medicamento.
+[ ] Rodar o PASSO 4 uma vez e conferir que NÃO volta
     "Nenhum cidadão cadastrado".
 
 --------------------------------------------------------------------
@@ -27,7 +32,7 @@ PASSO 1: INICIAR O SERVIDOR
 --------------------------------------------------------------------
 No terminal 1 (pasta Back-End):
 
-cd C:\Users\sophia.sigolini\Music\cuida\cuida_web_back_end\Back-End
+cd cuida\cuida_web_back_end\Back-End
 npm run dev
 
 -> O que explicar:
@@ -96,7 +101,28 @@ Invoke-RestMethod -Uri "http://localhost:3000/api/whatsapp/notificar-disponibili
    - lote.resumo: totais e falhas por código
 
 --------------------------------------------------------------------
-PASSO 5: PROVA DO TRATAMENTO DE ERROS (TESTES AUTOMÁTICOS)
+PASSO 5: ENTRADA DE ESTOQUE DISPARA O AVISO SOZINHA
+--------------------------------------------------------------------
+No terminal 2 (troque os ids pelos do PASSO 0):
+
+Invoke-RestMethod -Uri "http://localhost:3000/api/estoques/entrada" -Method POST -ContentType "application/json" -Body '{"id_medicamento": 3, "id_unidade": 4, "quantidade": 50, "lote": "DEMO001", "data_vencimento": "2027-06-30"}' | ConvertTo-Json -Depth 5
+
+-> O que explicar:
+   "Esta rota é usada pela gestão da UBS quando um lote chega. O
+   backend grava o lote e o estoque e confere quanto havia antes.
+   Como o remédio estava ZERADO, quem o favoritou é avisado
+   automaticamente, sem ninguém apertar botão."
+
+-> O que mostrar:
+   - estoque_antes: 0  e  estoque_depois: 50
+   - notificacao.disparada: true e o id do lote de notificação
+   - No terminal 1, os quadros [MOCK DISPARO WHATSAPP] aparecendo
+   - Rodar o MESMO comando de novo: agora estoque_antes é 50 e
+     notificacao.motivo = "JA_HAVIA_ESTOQUE" (ninguém é avisado de
+     novo, porque o remédio não estava em falta)
+
+--------------------------------------------------------------------
+PASSO 6: PROVA DO TRATAMENTO DE ERROS (TESTES AUTOMÁTICOS)
 --------------------------------------------------------------------
 Num terceiro terminal (pasta Back-End), com o servidor ainda rodando:
 
@@ -104,14 +130,16 @@ npm test
 
 -> O que explicar:
    "O modo simulação sempre responde sucesso. Para provar o
-   tratamento de erros, estes 27 testes rodam contra uma Evolution
-   API falsa e cobrem: número sem WhatsApp, ajuste do 9º dígito,
-   telefone inválido ou duplicado, instância caindo no meio do lote
-   (o WhatsApp é interrompido e os e-mails continuam), apikey errada
-   e API fora do ar."
+   tratamento de erros, estes 39 testes rodam contra uma Evolution
+   API e um banco falsos e cobrem: número sem WhatsApp, ajuste do
+   9º dígito, telefone inválido ou duplicado, instância caindo no
+   meio do lote (o WhatsApp é interrompido e os e-mails continuam),
+   apikey errada, API fora do ar e as regras da entrada de estoque
+   (só avisa se estava zerado, lote vencido é recusado, falha no
+   aviso não desfaz o estoque)."
 
 -> O que mostrar:
-   # tests 27
-   # pass 27
-   # fail 0
+   ℹ tests 39
+   ℹ pass 39
+   ℹ fail 0
 ====================================================================
