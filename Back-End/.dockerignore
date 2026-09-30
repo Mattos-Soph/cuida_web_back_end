@@ -1,0 +1,10 @@
+node_modules
+.env
+.env.*
+!.env.example
+test
+docs
+deploy
+*.md
+*.txt
+qr.png

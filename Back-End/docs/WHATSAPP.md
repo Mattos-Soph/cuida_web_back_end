@@ -128,6 +128,8 @@ Problemas já vistos:
 | "couldn't link device" no celular | v1 desatualizada | usar a v2 |
 | `Token already exists` ao criar na v1 | sobra dentro da imagem v1 | usar a v2, ou passar `"token"` próprio no create |
 
+Para rodar no servidor (24h, com HTTPS), veja **[DEPLOY_ORACLE.md](DEPLOY_ORACLE.md)**.
+
 ### 4.3 Script direto na Evolution
 
 No **PowerShell**, chame com `node` direto. O `npm run testar:whatsapp -- ...` perde o `--enviar`, porque o PowerShell trata o `--` de um jeito especial.

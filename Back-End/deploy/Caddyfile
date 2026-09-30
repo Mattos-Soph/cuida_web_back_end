@@ -1,0 +1,5 @@
+# HTTPS automático (Let's Encrypt) para o domínio definido em DOMINIO no deploy/.env
+{$DOMINIO} {
+	encode gzip
+	reverse_proxy api:3000
+}
