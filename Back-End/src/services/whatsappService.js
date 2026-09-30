@@ -4,7 +4,7 @@
  * Suporta os dois formatos de payload do /message/sendText:
  *   v1 (1.x): { number, options: { delay, presence }, textMessage: { text } }
  *   v2 (2.x): { number, text, delay }
- * Escolha com EVOLUTION_API_VERSION=v1|v2 (padrão v1, que é o que o projeto usava).
+ * Escolha com EVOLUTION_API_VERSION=v1|v2 (padrão v2, a versão validada com envio real).
  *
  * Inclui suporte a WHATSAPP_MOCK=true para testes locais sem Docker/instância ativa.
  */
@@ -20,7 +20,7 @@ function cfg() {
     url: (process.env.WHATSAPP_API_URL || 'http://localhost:8080').replace(/\/+$/, ''),
     apiKey: process.env.WHATSAPP_API_KEY || '',
     instancia: process.env.WHATSAPP_INSTANCE || 'cuida',
-    versao: (process.env.EVOLUTION_API_VERSION || 'v1').toLowerCase()
+    versao: (process.env.EVOLUTION_API_VERSION || 'v2').toLowerCase()
   };
 }
 
