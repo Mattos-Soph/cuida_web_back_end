@@ -1,6 +1,9 @@
 /**
  * Teste direto contra a Evolution API (sem Express, sem Supabase).
  *
+ * No PowerShell, chame com "node" direto: "npm run testar:whatsapp -- ..." perde
+ * o "--enviar", porque o PowerShell trata o "--" de um jeito especial.
+ *
  *   node scripts/testar-whatsapp.js "(14) 99999-9999"            -> só diagnostica
  *   node scripts/testar-whatsapp.js "(14) 99999-9999" --enviar   -> envia de verdade
  *   node scripts/testar-whatsapp.js "(14) 99999-9999" --enviar --modelo
@@ -25,7 +28,7 @@ const { montarMensagemDisponibilidade } = require('../src/utils/mensagens');
   const s = await wa.estadoConexao();
   console.log(`2) Estado da instância: ${s.estado}${s.conectado ? ' ✔' : ' ✘'}`);
   if (!s.conectado) {
-    console.log('   -> Leia o QR code: GET /instance/connect/' + c.instancia + ' (ou pelo Manager da Evolution).');
+    console.log('   -> Leia o QR code: GET /instance/connect/' + c.instancia + ' (ou pelo painel http://localhost:8080/manager na v2).');
     process.exit(2);
   }
 

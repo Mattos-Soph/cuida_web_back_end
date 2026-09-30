@@ -89,42 +89,56 @@ Sobe uma Evolution falsa e cobre: envio ok, JID sem o 9, sem WhatsApp, inválido
 
 ### 4.2 Evolution local (Docker)
 
+Use a **v2**: em 30/09/2026 ela conectou e enviou de verdade; a v1 (1.8.7) foi recusada pelo WhatsApp ("couldn't link device").
+
 ```bash
-# v1 (formato atual do projeto)
-docker compose -f docs/docker-compose.evolution.yml --profile v1 up -d
-# ou v2 (e ponha EVOLUTION_API_VERSION=v2 no .env)
 docker compose -f docs/docker-compose.evolution.yml --profile v2 up -d
+docker logs --tail 30 evolution_v2     # pronto quando aparecer "HTTP - ON: 8080"
 ```
 
-Criar a instância e ler o QR code (use um **número de teste**, não o pessoal):
+No `.env`: `EVOLUTION_API_VERSION=v2` e `WHATSAPP_API_KEY` **igual** a `AUTHENTICATION_API_KEY` do compose (`cuida-api-sla-2026`). Chave diferente = `NAO_AUTORIZADO` (401).
 
-```bash
-# v1
-curl -X POST http://localhost:8080/instance/create \
-  -H "apikey: troque-esta-chave" -H "Content-Type: application/json" \
-  -d '{"instanceName":"cuida","qrcode":true}'
+Conectar o número de teste (use um chip de teste ou WhatsApp Business, não o pessoal):
 
-# v2 (precisa do campo integration)
-curl -X POST http://localhost:8080/instance/create \
-  -H "apikey: troque-esta-chave" -H "Content-Type: application/json" \
-  -d '{"instanceName":"cuida","qrcode":true,"integration":"WHATSAPP-BAILEYS"}'
+- **Pelo painel (mais fácil):** abra `http://localhost:8080/manager`, entre com a chave, crie a instância `cuida` (canal Baileys) e clique para gerar o QR.
+- **Pelo PowerShell:**
 
-# QR code (campo base64 — cole num visualizador de base64 ou use o Manager em http://localhost:8080/manager na v2)
-curl http://localhost:8080/instance/connect/cuida -H "apikey: troque-esta-chave"
+```powershell
+Invoke-RestMethod -Method POST -Uri "http://localhost:8080/instance/create" -Headers @{apikey="cuida-api-sla-2026"} -ContentType "application/json" -Body '{"instanceName":"cuida","integration":"WHATSAPP-BAILEYS","qrcode":true}' | ConvertTo-Json -Depth 5
 
-# Conferir: deve responder "state":"open"
-curl http://localhost:8080/instance/connectionState/cuida -H "apikey: troque-esta-chave"
+$r = Invoke-RestMethod -Uri "http://localhost:8080/instance/connect/cuida" -Headers @{apikey="cuida-api-sla-2026"}
+$b64 = $r.base64 -replace '^data:image/png;base64,', ''
+[IO.File]::WriteAllBytes("$PWD\qr.png", [Convert]::FromBase64String($b64))
+start qr.png
+
+# Conferir: "state" tem que ser "open"
+Invoke-RestMethod -Uri "http://localhost:8080/instance/connectionState/cuida" -Headers @{apikey="cuida-api-sla-2026"} | ConvertTo-Json
 ```
+
+No celular: WhatsApp (ou Business) → ⋮ → Dispositivos conectados → Conectar dispositivo. O QR expira em ~40 s. Várias tentativas seguidas fazem o WhatsApp responder "try again later": espere alguns minutos.
+
+Desligar: `docker compose -f docs/docker-compose.evolution.yml --profile v2 down` (a sessão fica salva no Postgres; ao subir de novo, não precisa ler o QR).
+
+Problemas já vistos:
+
+| Sintoma | Causa | Solução |
+|---|---|---|
+| `pull access denied for atendai/evolution-api` | o repositório antigo da imagem foi apagado | a imagem agora é `evoapicloud/evolution-api` (já corrigido no compose) |
+| 401 `Unauthorized` | chave do `.env` diferente da do compose | deixar as duas iguais |
+| "couldn't link device" no celular | v1 desatualizada | usar a v2 |
+| `Token already exists` ao criar na v1 | sobra dentro da imagem v1 | usar a v2, ou passar `"token"` próprio no create |
 
 ### 4.3 Script direto na Evolution
 
+No **PowerShell**, chame com `node` direto. O `npm run testar:whatsapp -- ...` perde o `--enviar`, porque o PowerShell trata o `--` de um jeito especial.
+
 ```bash
-npm run testar:whatsapp -- "(14) 99999-9999"                     # só diagnostica
-npm run testar:whatsapp -- "(14) 99999-9999" --enviar            # envia um teste
-npm run testar:whatsapp -- "(14) 99999-9999" --enviar --modelo   # envia o aviso real
+node scripts/testar-whatsapp.js "(14) 99999-9999"                     # só diagnostica
+node scripts/testar-whatsapp.js "(14) 99999-9999" --enviar            # envia um teste
+node scripts/testar-whatsapp.js "(14) 99999-9999" --enviar --modelo   # envia o aviso real
 ```
 
-Ele mostra: configuração → estado da instância → higienização → verificação → envio.
+Troque o número pelo celular que vai **receber** (não o conectado). Ele mostra: configuração → estado da instância → higienização → verificação → envio.
 
 ### 4.4 Pelo back-end (curl / Insomnia)
 
