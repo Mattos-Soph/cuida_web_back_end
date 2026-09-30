@@ -18,6 +18,9 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ limit: "10mb", extended: true }));
 
 app.use(cors());
+
+// Verificação de saúde (usada no deploy e por monitoramento)
+app.get("/api/health", (req, res) => res.json({ status: "ok", horario: new Date().toISOString() }));
   
 app.use("/api/clientes", clienteRoutes);
 app.use("/api/unidades", unidadeRoutes);

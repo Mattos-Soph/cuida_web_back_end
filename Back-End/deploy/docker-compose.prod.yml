@@ -1,0 +1,78 @@
+# CUIDA em produção (VM Linux, ex.: Oracle Cloud Always Free).
+#
+#   cd Back-End/deploy
+#   cp .env.example .env   # e preencha (o .env NUNCA vai para o git)
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# Só o Caddy fica exposto na internet (portas 80 e 443, com HTTPS automático).
+# A Evolution fica acessível apenas de dentro da VM (127.0.0.1:8080): para ler o QR,
+# use um túnel SSH (ver docs/DEPLOY_ORACLE.md).
+name: cuida
+
+services:
+  api:
+    build:
+      context: ..
+    container_name: cuida_api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT_SERVER: "3000"
+      WHATSAPP_API_URL: http://evolution:8080
+      WHATSAPP_API_KEY: ${EVOLUTION_API_KEY}
+      WHATSAPP_INSTANCE: ${WHATSAPP_INSTANCE:-cuida}
+      EVOLUTION_API_VERSION: v2
+    depends_on:
+      - evolution
+    expose:
+      - "3000"
+
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: cuida_evolution
+    restart: unless-stopped
+    depends_on:
+      - evolution-db
+    ports:
+      - "127.0.0.1:8080:8080"   # só local; acesso externo via túnel SSH
+    environment:
+      SERVER_URL: http://localhost:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://evolution:${EVOLUTION_DB_PASSWORD}@evolution-db:5432/evolution?schema=public
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      LOG_LEVEL: ERROR,WARN,INFO
+
+  evolution-db:
+    image: postgres:16-alpine
+    container_name: cuida_evolution_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: evolution
+      POSTGRES_PASSWORD: ${EVOLUTION_DB_PASSWORD}
+      POSTGRES_DB: evolution
+    volumes:
+      - evolution_pg:/var/lib/postgresql/data
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: cuida_caddy
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMINIO: ${DOMINIO}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  evolution_pg:
+  caddy_data:
+  caddy_config:
